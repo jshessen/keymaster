@@ -1439,7 +1439,8 @@ class KeymasterCoordinator(DataUpdateCoordinator):
                     e,
                 )
                 return False
-            if usercode[ZWAVEJS_ATTR_USERCODE] == "":
+            # Treat both "" and "0000" as cleared (Schlage BE469 firmware bug workaround)
+            if usercode[ZWAVEJS_ATTR_USERCODE] in ("", "0000"):
                 _LOGGER.debug(
                     "[clear_pin_from_lock] %s: Code Slot %s: PIN Cleared",
                     kmlock.lock_name,
@@ -2001,6 +2002,8 @@ class KeymasterCoordinator(DataUpdateCoordinator):
                         code_slot_num=code_slot_num,
                         override=True,
                     )
+                    # Update child PIN in memory immediately to avoid retry loop
+                    child_kmlock.code_slots[code_slot_num].pin = None
                 else:
                     await self.set_pin_on_lock(
                         config_entry_id=child_kmlock.keymaster_config_entry_id,
@@ -2008,6 +2011,10 @@ class KeymasterCoordinator(DataUpdateCoordinator):
                         pin=kmslot.pin,
                         override=True,
                     )
+                    # Update child PIN in memory immediately (Schlage masked response workaround)
+                    # When locks return masked PINs (e.g., "**********"), _sync_pin keeps the
+                    # local PIN as None, causing infinite retry loops in parent/child sync
+                    child_kmlock.code_slots[code_slot_num].pin = kmslot.pin
 
     async def _schedule_quick_refresh_if_needed(self) -> None:
         """Schedule quick refresh if required."""
